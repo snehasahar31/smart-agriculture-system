@@ -7,7 +7,7 @@
 ---
 
 ### 🚀 Live Demo
-👉 **[Click Here to Open Website](https://es2uybha.streamlit.app)** *(Apna poora Streamlit link paste kar dena)*
+👉 **[Click Here to Open Website** https://smart-agriculture-system-hk4vwgff8lxihres2uybha.streamlit.app/
 
 ---
 
