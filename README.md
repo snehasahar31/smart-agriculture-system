@@ -7,7 +7,7 @@
 ---
 
 ### 🚀 Live Demo
-👉 **[Click Here to Open Website** https://smart-agriculture-system-hk4vwgff8lxihres2uybha.streamlit.app/
+👉 [Click Here to Open Website](https://smart-agriculture-system-hk4vwgff8lxihres2uybha.streamlit.app/)
 
 ---
 
@@ -15,4 +15,3 @@
 * **Language:** Python
 * **ML Model:** Random Forest Classifier (`scikit-learn`)
 * **Frontend/Deployment:** Streamlit
-* 
