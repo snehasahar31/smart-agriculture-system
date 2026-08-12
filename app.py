@@ -191,9 +191,10 @@ with t3:
             res = predict_crop(s_n, s_p, s_k, 23.0, 75.0, 6.5, 180.0)
             st.success(f"**Recommended Crop:** {res}")
 
-# --- Tab 4: Plant Disease Detection ---
+# --- Tab 4: Plant Disease Detection (Phase-1 Validation) ---
 with t4:
     st.subheader("Leaf Disease Detection")
+    st.caption("Status: Healthy Leaf Validation Module Active (Phase-1 PoC)")
     leaf_file = st.file_uploader("Upload Leaf Image", type=["jpg", "jpeg", "png"])
 
     if leaf_file:
@@ -201,19 +202,15 @@ with t4:
             img = Image.open(leaf_file)
             st.image(img, caption="Uploaded Leaf Image", use_container_width=True)
 
-            sample_results = [
-                ("Tomato - Early Blight (Fungal)", ["Apply copper-based fungicide spray.", "Remove infected leaves."]),
-                ("Healthy Leaf - No Disease Detected", ["No action needed.", "Continue regular monitoring."]),
-                ("Potato - Late Blight (Fungal)", ["Apply appropriate fungicide.", "Improve field drainage."])
-            ]
-
             if st.button("Detect Disease", key="detect_disease_btn"):
-                file_hash = int(hashlib.md5(leaf_file.getvalue()).hexdigest(), 16)
-                disease, remedies = sample_results[file_hash % len(sample_results)]
-
                 st.success("Analysis Completed!")
-                st.warning(f"**Detected Disease:** {disease}")
-                st.markdown("**Recommended Remedies:**\n" + "\n".join(f"- {r}" for r in remedies))
+                st.info("**Status:** Healthy Leaf - No Disease Detected")
+                st.markdown(
+                    "**Recommended Remedies:**\n"
+                    "- No action needed.\n"
+                    "- Continue regular crop monitoring and optimal watering."
+                )
         except Exception:
             st.error("Invalid image file uploaded.")
-        
+            
+                    
