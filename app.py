@@ -5,15 +5,18 @@ from PIL import Image
 from sklearn.ensemble import RandomForestClassifier
 import streamlit as st
 
-# --- Page Setup & Sidebar ---
+# --- Page Config & Header ---
 st.set_page_config(
-    page_title="Smart Agriculture System", page_icon="🌱", layout="wide"
+    page_title="Smart Agriculture System",
+    page_icon="🌱",
+    layout="wide"
 )
 
 st.title("🌱 Smart Agriculture & Crop Recommendation System")
 st.write("An AI/ML based web application for crop prediction and disease detection.")
 st.divider()
 
+# --- Sidebar ---
 st.sidebar.title("📌 Project Details")
 st.sidebar.write("**Course:** AI & ML")
 st.sidebar.info(
@@ -24,8 +27,7 @@ st.sidebar.divider()
 
 FEATURE_COLS = ["N", "P", "K", "temperature", "humidity", "ph", "rainfall"]
 
-
-# --- ML Model Training ---
+# --- Model Training (Full 12 Rows) ---
 @st.cache_resource
 def train_crop_model():
     dataset = [
@@ -50,82 +52,73 @@ def train_crop_model():
     rf.fit(X, y)
     return rf
 
-
 model = train_crop_model()
 
-
 def predict_crop(n, p, k, temp, hum, ph, rain):
-    row = pd.DataFrame([[n, p, k, temp, hum, ph, rain]], columns=FEATURE_COLS)
-    return model.predict(row)[0]
+    input_df = pd.DataFrame([[n, p, k, temp, hum, ph, rain]], columns=FEATURE_COLS)
+    return model.predict(input_df)[0]
 
-
-# --- Weather Fetch API ---
+# --- Weather API Fetch ---
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_weather(city_name: str):
-    geo_url = "https://geocoding-api.open-meteo.com/v1/search"
-    geo_res = requests.get(
-        geo_url,
-        params={"name": city_name, "count": 1, "language": "en", "format": "json"},
-        timeout=10,
-    ).json()
+    try:
+        geo_url = "https://geocoding-api.open-meteo.com/v1/search"
+        geo_params = {"name": city_name, "count": 1, "language": "en", "format": "json"}
+        geo_res = requests.get(geo_url, params=geo_params, timeout=10).json()
+        
+        if not geo_res.get("results"):
+            return None
 
-    if not geo_res.get("results"):
-        return None
+        location = geo_res["results"][0]
+        lat, lon = location["latitude"], location["longitude"]
+        resolved_name = location.get("name", city_name)
 
-    lat, lon = (
-        geo_res["results"][0]["latitude"],
-        geo_res["results"][0]["longitude"],
-    )
-    resolved_name = geo_res["results"][0].get("name", city_name)
-
-    w_url = "https://api.open-meteo.com/v1/forecast"
-    w_res = requests.get(
-        w_url,
-        params={
+        w_url = "https://api.open-meteo.com/v1/forecast"
+        w_params = {
             "latitude": lat,
             "longitude": lon,
-            "current": "temperature_2m,relative_humidity_2m,precipitation",
-        },
-        timeout=10,
-    ).json()
+            "current": "temperature_2m,relative_humidity_2m,precipitation"
+        }
+        w_res = requests.get(w_url, params=w_params, timeout=10).json()
 
-    return {
-        "resolved_name": resolved_name,
-        "temperature": w_res["current"]["temperature_2m"],
-        "humidity": w_res["current"]["relative_humidity_2m"],
-        "precipitation": w_res["current"]["precipitation"],
-    }
+        return {
+            "resolved_name": resolved_name,
+            "temperature": w_res["current"]["temperature_2m"],
+            "humidity": w_res["current"]["relative_humidity_2m"],
+            "precipitation": w_res["current"]["precipitation"],
+        }
+    except Exception:
+        return None
 
-
-# --- UI Tabs ---
+# --- Tabs Setup ---
 t1, t2, t3, t4 = st.tabs([
     "🎛️ Manual Sliders",
     "🌤️ Weather Search",
     "📊 Soil Test Report",
-    "🍃 Plant Disease Detection",
+    "🍃 Plant Disease Detection"
 ])
 
-# Tab 1: Manual Sliders
+# --- Tab 1: Manual Input ---
 with t1:
     st.subheader("Manual Parameter Testing")
     col1, col2 = st.columns(2)
+    
     with col1:
         n_val = st.slider("Nitrogen (N)", 0, 140, 85)
         p_val = st.slider("Phosphorus (P)", 0, 145, 45)
         k_val = st.slider("Potassium (K)", 0, 205, 40)
         ph_val = st.slider("Soil pH Level", 0.0, 14.0, 6.5)
+        
     with col2:
         temp_val = st.slider("Temperature (°C)", 10.0, 50.0, 23.0)
         hum_val = st.slider("Humidity (%)", 10.0, 100.0, 75.0)
         rain_val = st.slider("Rainfall (mm)", 20.0, 300.0, 180.0)
 
     if st.button("Analyze & Predict", key="predict_manual"):
-        pred = predict_crop(
-            n_val, p_val, k_val, temp_val, hum_val, ph_val, rain_val
-        )
+        pred = predict_crop(n_val, p_val, k_val, temp_val, hum_val, ph_val, rain_val)
         st.success(f"**Recommended Crop:** {pred}")
 
-# Tab 2: Live Weather
+# --- Tab 2: Weather Search ---
 with t2:
     st.subheader("Live Weather Based Testing")
     city_input = st.text_input("Enter City / District:", "Patna")
@@ -135,11 +128,7 @@ with t2:
             st.warning("Please enter a city name.")
         else:
             with st.spinner("Fetching live weather data..."):
-                try:
-                    weather = fetch_weather(city_input.strip())
-                except Exception:
-                    st.error("Error fetching weather data.")
-                    weather = None
+                weather = fetch_weather(city_input.strip())
 
             if weather:
                 st.info(
@@ -149,21 +138,17 @@ with t2:
                     f"Rainfall: {weather['precipitation']} mm"
                 )
                 pred = predict_crop(
-                    85,
-                    45,
-                    40,
+                    85, 45, 40,
                     weather["temperature"],
                     weather["humidity"],
                     6.5,
-                    weather["precipitation"],
+                    weather["precipitation"]
                 )
-                st.success(
-                    f"**Best Crop for {weather['resolved_name']}:** {pred}"
-                )
+                st.success(f"**Best Crop for {weather['resolved_name']}:** {pred}")
             else:
-                st.error(f"Location '{city_input}' not found.")
+                st.error(f"Location '{city_input}' not found or weather service unavailable.")
 
-# Tab 3: Soil Test CSV
+# --- Tab 3: Soil Test Report ---
 with t3:
     st.subheader("Soil Lab Test Analysis")
     uploaded_csv = st.file_uploader("Upload CSV", type=["csv"])
@@ -171,23 +156,18 @@ with t3:
     if uploaded_csv:
         try:
             csv_df = pd.read_csv(uploaded_csv)
-            preds = [
-                predict_crop(
-                    *[
-                        float(row.get(c, 50))
-                        for c in [
-                            "N",
-                            "P",
-                            "K",
-                            "temperature",
-                            "humidity",
-                            "ph",
-                            "rainfall",
-                        ]
-                    ]
+            preds = []
+            for _, row in csv_df.iterrows():
+                crop_out = predict_crop(
+                    float(row.get("N", 90)),
+                    float(row.get("P", 42)),
+                    float(row.get("K", 43)),
+                    float(row.get("temperature", 23.0)),
+                    float(row.get("humidity", 75.0)),
+                    float(row.get("ph", 6.5)),
+                    float(row.get("rainfall", 180.0))
                 )
-                for _, row in csv_df.iterrows()
-            ]
+                preds.append(crop_out)
 
             csv_df["Recommended_Crop"] = preds
             st.write("### 📊 Soil Analysis Results")
@@ -197,67 +177,43 @@ with t3:
                 "Download Results as CSV",
                 data=csv_df.to_csv(index=False).encode("utf-8"),
                 file_name="crop_recommendations.csv",
-                mime="text/csv",
+                mime="text/csv"
             )
         except Exception:
-            st.error("Could not read or process the CSV file.")
+            st.error("Could not read or process the uploaded CSV file.")
     else:
         st.caption("No file uploaded — try a quick manual check:")
         s_n = st.number_input("Nitrogen", value=90)
         s_p = st.number_input("Phosphorus", value=42)
         s_k = st.number_input("Potassium", value=43)
+        
         if st.button("Analyze Soil", key="analyze_soil_manual"):
             res = predict_crop(s_n, s_p, s_k, 23.0, 75.0, 6.5, 180.0)
             st.success(f"**Recommended Crop:** {res}")
 
-# Tab 4: Leaf Disease Detection
+# --- Tab 4: Plant Disease Detection ---
 with t4:
     st.subheader("Leaf Disease Detection")
-    leaf_file = st.file_uploader(
-        "Upload Leaf Image", type=["jpg", "jpeg", "png"]
-    )
+    leaf_file = st.file_uploader("Upload Leaf Image", type=["jpg", "jpeg", "png"])
 
     if leaf_file:
         try:
             img = Image.open(leaf_file)
-            st.image(
-                img, caption="Uploaded Leaf Image", use_container_width=True
-            )
+            st.image(img, caption="Uploaded Leaf Image", use_container_width=True)
+
+            sample_results = [
+                ("Tomato - Early Blight (Fungal)", ["Apply copper-based fungicide spray.", "Remove infected leaves."]),
+                ("Healthy Leaf - No Disease Detected", ["No action needed.", "Continue regular monitoring."]),
+                ("Potato - Late Blight (Fungal)", ["Apply appropriate fungicide.", "Improve field drainage."])
+            ]
 
             if st.button("Detect Disease", key="detect_disease_btn"):
-                sample_results = [
-                    (
-                        "Tomato - Early Blight (Fungal)",
-                        [
-                            "Apply copper-based fungicide spray.",
-                            "Remove infected leaves.",
-                        ],
-                    ),
-                    (
-                        "Healthy Leaf - No Disease Detected",
-                        ["No action needed.", "Continue regular monitoring."],
-                    ),
-                    (
-                        "Potato - Late Blight (Fungal)",
-                        [
-                            "Apply appropriate fungicide.",
-                            "Improve field drainage.",
-                        ],
-                    ),
-                ]
-                file_hash = int(
-                    hashlib.md5(leaf_file.getvalue()).hexdigest(), 16
-                )
-                disease, remedies = sample_results[
-                    file_hash % len(sample_results)
-                ]
+                file_hash = int(hashlib.md5(leaf_file.getvalue()).hexdigest(), 16)
+                disease, remedies = sample_results[file_hash % len(sample_results)]
 
                 st.success("Analysis Completed!")
                 st.warning(f"**Detected Disease:** {disease}")
-                st.markdown(
-                    "**Recommended Remedies:**\n"
-                    + "\n".join(f"- {r}" for r in remedies)
-                )
+                st.markdown("**Recommended Remedies:**\n" + "\n".join(f"- {r}" for r in remedies))
         except Exception:
             st.error("Invalid image file uploaded.")
-    
+        
