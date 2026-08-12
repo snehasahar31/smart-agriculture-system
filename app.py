@@ -12,15 +12,15 @@ st.set_page_config(
     page_title="Smart Agriculture System", layout="wide"
 )
 
-st.title("ðŸŒ± Smart Agriculture & Crop Recommendation System")
+st.title("Smart Agriculture & Crop Recommendation System")
 st.write("An AI/ML based web application for crop prediction and disease detection.")
 st.divider()
 
 # Sidebar info
-st.sidebar.title("ðŸ“Œ Project Details")
+st.sidebar.title("Project Details")
 st.sidebar.write("**Course:** AI & ML")
 st.sidebar.info(
-    "âš ï¸ Demo model: trained on a very small sample dataset (7 rows). "
+    " Demo model: trained on a very small sample dataset (7 rows). "
     "Predictions are illustrative, not agronomically accurate."
 )
 st.sidebar.divider()
