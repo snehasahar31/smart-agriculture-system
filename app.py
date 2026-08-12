@@ -85,7 +85,7 @@ with tab1:
     )[0]
     st.success(f"🌱 **Recommended Crop:** {res}")
 
-# TAB 2: Weather Test Option (Updated Dynamic Geocoding)
+# TAB 2: Dynamic Live Weather Test (Temp, Humidity & Rainfall)
 with tab2:
   st.subheader("Live Weather Based Testing")
   city = st.text_input(
@@ -94,7 +94,7 @@ with tab2:
 
   if st.button("🔍 Fetch Weather & Recommend Crop"):
     try:
-      # Step 1: City Name ko Latitude aur Longitude me convert karna
+      # Step 1: Geocoding API (City to Latitude/Longitude)
       geo_url = f"https://geocoding-api.open-meteo.com/v1/search?name={city}&count=1&language=en&format=json"
       geo_response = requests.get(geo_url).json()
 
@@ -104,18 +104,26 @@ with tab2:
         place_name = geo_response["results"][0]["name"]
         country = geo_response["results"][0].get("country", "")
 
-        # Step 2: Live Weather Data Fetch karna using dynamic Lat & Lon
-        weather_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true"
+        # Step 2: Open-Meteo API se Live Temp, Humidity aur Precipitation Fetch karna
+        weather_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,precipitation"
         weather_response = requests.get(weather_url).json()
-        live_temp = weather_response["current_weather"]["temperature"]
 
+        current_data = weather_response["current"]
+        live_temp = current_data["temperature_2m"]
+        live_hum = current_data["relative_humidity_2m"]
+        live_rain = current_data["precipitation"]
+
+        # Screen par live details show karna
         st.info(
-            f"📍 **Location:** {place_name}, {country} | 🌡️ **Live Temp:**"
-            f" {live_temp}°C"
+            f"📍 **Location:** {place_name}, {country} | 🌡️ **Temp:**"
+            f" {live_temp}°C | 💧 **Humidity:** {live_hum}% | 🌧️"
+            f" **Precipitation:** {live_rain} mm"
         )
 
-        # Step 3: Predict with Live Temperature
-        res = model.predict([[85, 45, 40, live_temp, 75.0, 6.5, 180.0]])[0]
+        # Step 3: Model Prediction me Real Data Pass Karna [N, P, K, Temp, Humidity, pH, Rainfall]
+        res = model.predict(
+            [[85, 45, 40, live_temp, live_hum, 6.5, live_rain]]
+        )[0]
         st.success(f"🌱 **Best Crop for {place_name}'s Weather:** {res}")
       else:
         st.error(
@@ -150,5 +158,8 @@ with tab3:
     if st.button("🧪 Analyze Soil Test Values"):
       res = model.predict([[s_n, s_p, s_k, 23.0, 75.0, 6.5, 180.0]])[0]
       st.success(f"🌱 **Crop Recommendation Based on Soil Test:** {res}")
-    
-        
+          
+
+
+
+ 
