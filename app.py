@@ -9,7 +9,7 @@ import hashlib
 # Page config
 # ------------------------------------------------------------------
 st.set_page_config(
-    page_title="Smart Agriculture System", page_icon="ðŸŒ±", layout="wide"
+    page_title="Smart Agriculture System", layout="wide"
 )
 
 st.title("ðŸŒ± Smart Agriculture & Crop Recommendation System")
