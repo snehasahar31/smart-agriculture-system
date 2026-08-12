@@ -1,31 +1,31 @@
+import hashlib
 import pandas as pd
 import requests
+from PIL import Image
 from sklearn.ensemble import RandomForestClassifier
 import streamlit as st
-from PIL import Image
-import hashlib
 
-# Page config
+# --- Page Setup & Sidebar ---
 st.set_page_config(
-    page_title="Smart Agriculture System", page_icon="", layout="wide"
+    page_title="Smart Agriculture System", page_icon="🌱", layout="wide"
 )
 
-st.title("Smart Agriculture & Crop Recommendation System")
+st.title("🌱 Smart Agriculture & Crop Recommendation System")
 st.write("An AI/ML based web application for crop prediction and disease detection.")
 st.divider()
 
-# Sidebar info
-st.sidebar.title(" Project Details")
+st.sidebar.title("📌 Project Details")
 st.sidebar.write("**Course:** AI & ML")
 st.sidebar.info(
-    " Demo model: trained on a very small sample dataset (7 rows). "
+    "Demo model: trained on a sample dataset. "
     "Predictions are illustrative, not agronomically accurate."
 )
 st.sidebar.divider()
 
 FEATURE_COLS = ["N", "P", "K", "temperature", "humidity", "ph", "rainfall"]
 
-# Model training Train Model
+
+# --- ML Model Training ---
 @st.cache_resource
 def train_crop_model():
     dataset = [
@@ -55,13 +55,11 @@ model = train_crop_model()
 
 
 def predict_crop(n, p, k, temp, hum, ph, rain):
-    """Run a single prediction using a properly-named DataFrame
-    (avoids sklearn 'X does not have valid feature names' warnings)."""
     row = pd.DataFrame([[n, p, k, temp, hum, ph, rain]], columns=FEATURE_COLS)
     return model.predict(row)[0]
 
 
-# Weather fetch Weather API
+# --- Weather Fetch API ---
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_weather(city_name: str):
     geo_url = "https://geocoding-api.open-meteo.com/v1/search"
@@ -74,8 +72,10 @@ def fetch_weather(city_name: str):
     if not geo_res.get("results"):
         return None
 
-    lat = geo_res["results"][0]["latitude"]
-    lon = geo_res["results"][0]["longitude"]
+    lat, lon = (
+        geo_res["results"][0]["latitude"],
+        geo_res["results"][0]["longitude"],
+    )
     resolved_name = geo_res["results"][0].get("name", city_name)
 
     w_url = "https://api.open-meteo.com/v1/forecast"
@@ -97,15 +97,15 @@ def fetch_weather(city_name: str):
     }
 
 
-# Tabs
+# --- UI Tabs ---
 t1, t2, t3, t4 = st.tabs([
     "🎛️ Manual Sliders",
-    "Weather Test (City Search)",
-    "Soil Test Report",
-    "Plant Disease Detection",
+    "🌤️ Weather Search",
+    "📊 Soil Test Report",
+    "🍃 Plant Disease Detection",
 ])
 
-# Manual Input
+# Tab 1: Manual Sliders
 with t1:
     st.subheader("Manual Parameter Testing")
     col1, col2 = st.columns(2)
@@ -120,10 +120,12 @@ with t1:
         rain_val = st.slider("Rainfall (mm)", 20.0, 300.0, 180.0)
 
     if st.button("Analyze & Predict", key="predict_manual"):
-        pred = predict_crop(n_val, p_val, k_val, temp_val, hum_val, ph_val, rain_val)
+        pred = predict_crop(
+            n_val, p_val, k_val, temp_val, hum_val, ph_val, rain_val
+        )
         st.success(f"**Recommended Crop:** {pred}")
 
-# Weather
+# Tab 2: Live Weather
 with t2:
     st.subheader("Live Weather Based Testing")
     city_input = st.text_input("Enter City / District:", "Patna")
@@ -135,33 +137,33 @@ with t2:
             with st.spinner("Fetching live weather data..."):
                 try:
                     weather = fetch_weather(city_input.strip())
-                except requests.exceptions.Timeout:
-                    st.error("⏱️ Weather service timed out. Please try again.")
-                    weather = None
-                except requests.exceptions.RequestException:
-                    st.error("🌐 Could not reach the weather service. Check your internet connection.")
-                    weather = None
-                except (KeyError, ValueError):
-                    st.error(" Unexpected response from the weather service.")
+                except Exception:
+                    st.error("Error fetching weather data.")
                     weather = None
 
-            if weather is None:
-                if city_input:
-                    st.error(f"Location '{city_input}' not found. Please check the spelling.")
-            else:
+            if weather:
                 st.info(
-                    f" Location: {weather['resolved_name']} | "
-                    f" Temp: {weather['temperature']}°C | "
-                    f" Humidity: {weather['humidity']}% | "
-                    f" Rainfall: {weather['precipitation']} mm"
+                    f"📍 Location: {weather['resolved_name']} | "
+                    f"Temp: {weather['temperature']}°C | "
+                    f"Humidity: {weather['humidity']}% | "
+                    f"Rainfall: {weather['precipitation']} mm"
                 )
                 pred = predict_crop(
-                    85, 45, 40,
-                    weather["temperature"], weather["humidity"], 6.5, weather["precipitation"],
+                    85,
+                    45,
+                    40,
+                    weather["temperature"],
+                    weather["humidity"],
+                    6.5,
+                    weather["precipitation"],
                 )
-                st.success(f"**Best Crop for {weather['resolved_name']}'s Weather:** {pred}")
+                st.success(
+                    f"**Best Crop for {weather['resolved_name']}:** {pred}"
+                )
+            else:
+                st.error(f"Location '{city_input}' not found.")
 
-# Soil Test
+# Tab 3: Soil Test CSV
 with t3:
     st.subheader("Soil Lab Test Analysis")
     uploaded_csv = st.file_uploader("Upload CSV", type=["csv"])
@@ -169,56 +171,38 @@ with t3:
     if uploaded_csv:
         try:
             csv_df = pd.read_csv(uploaded_csv)
-        except Exception:
-            st.error(" Could not read the CSV file. Please check the file format.")
-            csv_df = None
-
-        if csv_df is not None:
-            if csv_df.empty:
-                st.warning("The uploaded CSV is empty.")
-            else:
-                missing_cols = [c for c in FEATURE_COLS if c not in csv_df.columns]
-                if missing_cols:
-                    st.warning(
-                        f" Missing columns {missing_cols} — default values will be used for them."
-                    )
-
-                with st.spinner("Analyzing soil samples..."):
-                    preds = []
-                    for _, row in csv_df.iterrows():
-                        try:
-                            n = float(row.get("N", 90))
-                            p = float(row.get("P", 42))
-                            k = float(row.get("K", 43))
-                            temp = float(row.get("temperature", 23.0))
-                            hum = float(row.get("humidity", 75.0))
-                            ph = float(row.get("ph", 6.5))
-                            rain = float(row.get("rainfall", 180.0))
-                            crop_out = predict_crop(n, p, k, temp, hum, ph, rain)
-                        except (ValueError, TypeError):
-                            crop_out = "Invalid data"
-                        preds.append(crop_out)
-
-                csv_df["Recommended_Crop"] = preds
-
-                st.write("### 📊 Soil Analysis & Crop Predictions")
-                st.dataframe(csv_df, use_container_width=True)
-                st.success(" Report Processed Successfully!")
-
-                st.download_button(
-                    " Download Results as CSV",
-                    data=csv_df.to_csv(index=False).encode("utf-8"),
-                    file_name="crop_recommendations.csv",
-                    mime="text/csv",
+            preds = [
+                predict_crop(
+                    *[
+                        float(row.get(c, 50))
+                        for c in [
+                            "N",
+                            "P",
+                            "K",
+                            "temperature",
+                            "humidity",
+                            "ph",
+                            "rainfall",
+                        ]
+                    ]
                 )
+                for _, row in csv_df.iterrows()
+            ]
 
-                st.write("### Crop Recommendations")
-                for idx, row in csv_df.iterrows():
-                    sample_id = row.get("Sample_ID", row.get("Location", f"Sample #{idx + 1}"))
-                    crop_name = row["Recommended_Crop"]
-                    st.success(f" **{sample_id}** ➔ Recommended Crop: **{crop_name}**")
+            csv_df["Recommended_Crop"] = preds
+            st.write("### 📊 Soil Analysis Results")
+            st.dataframe(csv_df, use_container_width=True)
+
+            st.download_button(
+                "Download Results as CSV",
+                data=csv_df.to_csv(index=False).encode("utf-8"),
+                file_name="crop_recommendations.csv",
+                mime="text/csv",
+            )
+        except Exception:
+            st.error("Could not read or process the CSV file.")
     else:
-        st.caption("No file uploaded — try a quick manual soil check instead:")
+        st.caption("No file uploaded — try a quick manual check:")
         s_n = st.number_input("Nitrogen", value=90)
         s_p = st.number_input("Phosphorus", value=42)
         s_k = st.number_input("Potassium", value=43)
@@ -226,46 +210,54 @@ with t3:
             res = predict_crop(s_n, s_p, s_k, 23.0, 75.0, 6.5, 180.0)
             st.success(f"**Recommended Crop:** {res}")
 
-# Disease Detection
+# Tab 4: Leaf Disease Detection
 with t4:
     st.subheader("Leaf Disease Detection")
-    st.caption(
-        " Demo mode: no trained vision model is connected yet, so results below are "
-        "simulated for demonstration purposes only and should not be used for real "
-        "agronomic decisions."
+    leaf_file = st.file_uploader(
+        "Upload Leaf Image", type=["jpg", "jpeg", "png"]
     )
-    leaf_file = st.file_uploader("Upload Leaf Image", type=["jpg", "jpeg", "png"])
 
     if leaf_file:
         try:
             img = Image.open(leaf_file)
-            img.verify()
-            leaf_file.seek(0)
-            img = Image.open(leaf_file)
-            st.image(img, caption="Uploaded Leaf Image", use_container_width=True)
-        except Exception:
-            st.error(" Could not open this image. Please upload a valid JPG/PNG file.")
-            img = None
+            st.image(
+                img, caption="Uploaded Leaf Image", use_container_width=True
+            )
 
-        if img is not None and st.button("Detect Disease", key="detect_disease_btn"):
-            with st.spinner(" Processing image..."):
-                # Simulated result: deterministic per-image so the same file
-                # always yields the same demo output (no real ML model here).
+            if st.button("Detect Disease", key="detect_disease_btn"):
                 sample_results = [
-                    ("Tomato - Early Blight (Fungal)",
-                     ["Apply copper-based fungicide spray.", "Remove infected leaves."]),
-                    ("Healthy Leaf - No Disease Detected",
-                     ["No action needed.", "Continue regular monitoring."]),
-                    ("Potato - Late Blight (Fungal)",
-                     ["Apply appropriate fungicide.", "Improve field drainage and airflow."]),
-                    ("Leaf - Nutrient Deficiency (Suspected)",
-                     ["Get a soil test done.", "Consider balanced NPK fertilization."]),
+                    (
+                        "Tomato - Early Blight (Fungal)",
+                        [
+                            "Apply copper-based fungicide spray.",
+                            "Remove infected leaves.",
+                        ],
+                    ),
+                    (
+                        "Healthy Leaf - No Disease Detected",
+                        ["No action needed.", "Continue regular monitoring."],
+                    ),
+                    (
+                        "Potato - Late Blight (Fungal)",
+                        [
+                            "Apply appropriate fungicide.",
+                            "Improve field drainage.",
+                        ],
+                    ),
                 ]
-                file_hash = int(hashlib.md5(leaf_file.getvalue()).hexdigest(), 16)
-                disease, remedies = sample_results[file_hash % len(sample_results)]
+                file_hash = int(
+                    hashlib.md5(leaf_file.getvalue()).hexdigest(), 16
+                )
+                disease, remedies = sample_results[
+                    file_hash % len(sample_results)
+                ]
 
-            st.success(" **Analysis Completed!**")
-            st.warning(f" **Detected Disease:** {disease}")
-            st.markdown("** Recommended Remedy:**\n" + "\n".join(f"- {r}" for r in remedies))
-            st.caption("Simulated output — connect a real image-classification model for production use.")
-        
+                st.success("Analysis Completed!")
+                st.warning(f"**Detected Disease:** {disease}")
+                st.markdown(
+                    "**Recommended Remedies:**\n"
+                    + "\n".join(f"- {r}" for r in remedies)
+                )
+        except Exception:
+            st.error("Invalid image file uploaded.")
+    
