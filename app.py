@@ -155,7 +155,7 @@ else:
     with t4:
         st.subheader("🍃 Plant Health Diagnostic (Plant.id API)")
         
-        PLANT_ID_API_KEY = "YOUR_PLANT_ID_API_KEY_HERE"
+        PLANT_ID_API_KEY = "EI9DKae6Sgbd28Rqx2AnaIV6XmOZZxIZZo01mYljV9tXUSRLdZ"
         api_key = st.text_input("Plant.id API Key:", value=PLANT_ID_API_KEY, type="password")
 
         img_file = st.file_uploader("Upload Leaf Image", type=["jpg", "jpeg", "png"])
