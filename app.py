@@ -1,203 +1,197 @@
-import base64, hashlib, os
+import base64,daatetime,hashlib
+import os
+import requests
 import numpy as np
 import pandas as pd
-import requests
+import streamlit as st
 from PIL import Image
 from sklearn.ensemble import RandomForestClassifier
-import streamlit as st
 
-# --- 1. Page Configuration ---
+# --- 2. Page Config & Session Setup ---
 st.set_page_config(page_title="Smart Agriculture System", page_icon="🌱", layout="wide")
 
-# --- 2. User Authentication & Database Setup ---
+# Password Hashing & Login Database Initialization
 make_hash = lambda p: hashlib.sha256(p.encode()).hexdigest()
 st.session_state.setdefault("user_db", {"admin": make_hash("admin123"), "farmer": make_hash("farmer123")})
 st.session_state.setdefault("logged_in", False)
-st.session_state.setdefault("username", "")
 
-# --- 3. Login & Registration Screen ---
+# --- 3. ML Model Features & Crop Knowledge Base ---
+FEATURE_COLS = ["N", "P", "K", "temperature", "humidity", "ph", "rainfall"]
+CROPS = ["Rice", "Maize", "Chickpea", "Cotton", "Coffee", "Wheat", "Sugarcane", "Banana", "Apple", "Papaya"]
+
+# Crop Cultivation Information (Season, Water, Duration, Tips)
+CROP_INFO = {
+    "Rice": ("Kharif", "High", "100-150 Days", "Standing water & clayey soil required."),
+    "Maize": ("Kharif", "Moderate", "90-110 Days", "Needs well-drained fertile soil."),
+    "Chickpea": ("Rabi", "Low", "90-120 Days", "Requires cool weather & light soil."),
+    "Cotton": ("Kharif", "Moderate", "150-180 Days", "Deep black soil with good drainage."),
+    "Coffee": ("Perennial", "High", "Perennial", "Humid hill slopes under shade."),
+    "Wheat": ("Rabi", "Moderate", "120-150 Days", "Cool growth, warm sunny ripening."),
+    "Sugarcane": ("Perennial", "High", "12-18 Months", "Loamy soil rich in organic matter."),
+    "Banana": ("All Season", "High", "12-15 Months", "Rich, well-drained moist soil."),
+    "Apple": ("Temperate", "Moderate", "Perennial", "Chilling hours required in winter."),
+    "Papaya": ("All Season", "Moderate", "9-12 Months", "Sensitive to waterlogging.")
+}
+
+# --- 4. ML Model Training Function ---
+@st.cache_resource
+def get_trained_crop_model():
+    if not os.path.exists("Crop_recommendation_v2.csv"):
+        # Auto-generate synthetic dataset if CSV not found
+        rows = [[np.random.randint(20,120), np.random.randint(15,100), np.random.randint(15,150),
+                 round(np.random.uniform(12,35), 1), round(np.random.uniform(40,95), 1),
+                 round(np.random.uniform(5.5,7.5), 1), round(np.random.uniform(40,250), 1), c]
+                for c in CROPS for _ in range(40)]
+        pd.DataFrame(rows, columns=FEATURE_COLS + ["crop"]).to_csv("Crop_recommendation_v2.csv", index=False)
+    
+    df = pd.read_csv("Crop_recommendation_v2.csv")
+    return RandomForestClassifier(n_estimators=100, random_state=42).fit(df[FEATURE_COLS], df["crop"])
+
+crop_model = get_trained_crop_model()
+predict_crop = lambda n, p, k, t, h, ph, r: crop_model.predict(pd.DataFrame([[n, p, k, t, h, ph, r]], columns=FEATURE_COLS))[0]
+
+# UI Helper: Show Crop Details Card
+def show_crop_details(crop_name):
+    if crop_name in CROP_INFO:
+        s, w, d, t = CROP_INFO[crop_name]
+        with st.expander(f"📋 **Cultivation Guide for {crop_name}**", expanded=True):
+            st.write(f"🗓️ **Season:** {s} | 💧 **Water:** {w} | ⏳ **Duration:** {d}\n\n💡 **Tip:** {t}")
+
+# --- 5. External API Helpers ---
+# Plant.id Leaf Disease Detection API Helper
+def check_plant_disease_api(img_bytes, api_key):
+    try:
+        response = requests.post(
+            "https://plant.id/api/v3/health_assessment", 
+            json={
+                "images": [f"data:image/jpeg;base64,{base64.b64encode(img_bytes).decode()}"], 
+                "similar_images": True
+            }, 
+            headers={"Api-Key": api_key, "Content-Type": "application/json"}, 
+            timeout=15
+        )
+        return response
+    except Exception as e:
+        return None
+
+# Open-Meteo Live Weather API Helper
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_weather(city: str):
+    try:
+        g = requests.get("https://geocoding-api.open-meteo.com/v1/search", params={"name": city, "count": 1}, timeout=5).json()["results"][0]
+        w = requests.get("https://api.open-meteo.com/v1/forecast", params={"latitude": g["latitude"], "longitude": g["longitude"], "current": "temperature_2m,relative_humidity_2m"}, timeout=5).json()["current"]
+        return {"name": g.get("name", city), "temp": w["temperature_2m"], "hum": w["relative_humidity_2m"]}
+    except Exception: 
+        return None
+
+# --- 6. User Authentication Screen (Login / Register) ---
 if not st.session_state["logged_in"]:
     st.title("🌱 Smart Agriculture Portal")
     t_login, t_reg = st.tabs(["🔐 Login", "📝 Register"])
-
-    # Login Section
+    
+    # Login Tab
     with t_login:
-        u = st.text_input("Username", key="l_u")
-        p = st.text_input("Password", type="password", key="l_p")
-        if st.button("Login", key="l_btn"):
-            if u in st.session_state["user_db"] and st.session_state["user_db"][u] == make_hash(p):
+        u, p = st.text_input("Username", key="l_u"), st.text_input("Password", type="password", key="l_p")
+        if st.button("Login"):
+            if st.session_state["user_db"].get(u) == make_hash(p):
                 st.session_state.update({"logged_in": True, "username": u})
                 st.rerun()
-            else:
-                st.error("Invalid Credentials!")
-
-    # Registration Section
+            else: st.error("Invalid Credentials!")
+            
+    # Registration Tab
     with t_reg:
-        ru = st.text_input("Choose Username", key="r_u")
-        rp = st.text_input("Choose Password", type="password", key="r_p")
-        rcp = st.text_input("Confirm Password", type="password", key="r_cp")
-        if st.button("Register Account", key="r_btn"):
-            if not ru.strip() or not rp.strip():
-                st.warning("Fill all fields.")
-            elif ru in st.session_state["user_db"]:
-                st.error("Username taken.")
-            elif rp != rcp:
-                st.error("Passwords do not match!")
+        ru, rp, rcp = st.text_input("Choose Username", key="r_u"), st.text_input("Choose Password", type="password", key="r_p"), st.text_input("Confirm Password", type="password", key="r_cp")
+        if st.button("Register Account"):
+            if ru in st.session_state["user_db"]: st.error("Username taken.")
+            elif rp != rcp or not ru.strip(): st.error("Password mismatch or empty fields!")
             else:
                 st.session_state["user_db"][ru] = make_hash(rp)
-                st.success("Account created successfully!")
+                st.success("Account created!")
 
-# --- 4. Main Application Dashboard ---
+# --- 7. Main Dashboard (After Login) ---
 else:
-    # Sidebar User Profile & Logout
+    # Sidebar Logout
     st.sidebar.markdown(f"👤 **Logged User:** `{st.session_state['username']}`")
     if st.sidebar.button("🚪 Logout"):
         st.session_state.update({"logged_in": False, "username": ""})
         st.rerun()
 
     st.title("🌱 Smart Agriculture & Crop Recommendation System")
-    
-    # --- ML Crop Model Training ---
-    FEATURE_COLS = ["N", "P", "K", "temperature", "humidity", "ph", "rainfall"]
+    t1, t2, t3, t4 = st.tabs(["🎛️ Sliders", "🌤️ Weather Search", "📊 Soil Test", "🍃 Disease Detection"])
 
-    @st.cache_resource
-    def get_trained_crop_model():
-        file_path = "Crop_recommendation_v2.csv"
-        if not os.path.exists(file_path):
-            # Overlapping NPK ranges so Temperature, Humidity & Rainfall decide the crop
-            crops = {
-                "Rice": (60,100, 35,60, 30,50, 20,35, 70,95, 5.5,7.2, 150,300),
-                "Maize": (50,90, 35,60, 20,50, 18,32, 50,75, 5.5,7.0, 60,130),
-                "Chickpea": (20,50, 50,80, 60,85, 12,22, 14,35, 5.5,6.5, 40,90),
-                "Cotton": (60,110, 35,60, 20,50, 22,35, 50,80, 5.8,8.0, 60,120),
-                "Coffee": (70,110, 15,35, 25,45, 20,28, 50,80, 6.0,7.0, 115,200),
-                "Wheat": (50,90, 35,60, 30,50, 10,24, 40,70, 6.0,7.5, 50,120),
-                "Sugarcane": (60,110, 30,60, 25,50, 24,38, 50,85, 6.0,7.5, 80,180),
-                "Banana": (80,120, 60,95, 40,65, 22,33, 70,90, 5.5,6.5, 90,160),
-                "Apple": (10,40, 100,145, 150,205, 12,24, 80,95, 5.5,6.5, 90,130),
-                "Papaya": (35,70, 40,70, 40,60, 22,35, 70,95, 6.5,7.0, 80,200)
-            }
-            rows = []
-            for crop, b in crops.items():
-                for _ in range(50):
-                    rows.append([
-                        np.random.randint(b[0], b[1]), np.random.randint(b[2], b[3]), np.random.randint(b[4], b[5]),
-                        round(np.random.uniform(b[6], b[7]), 1), round(np.random.uniform(b[8], b[9]), 1),
-                        round(np.random.uniform(b[10], b[11]), 1), round(np.random.uniform(b[12], b[13]), 1), crop
-                    ])
-            pd.DataFrame(rows, columns=FEATURE_COLS + ["crop"]).to_csv(file_path, index=False)
-
-        df = pd.read_csv(file_path)
-        return RandomForestClassifier(n_estimators=100, random_state=42).fit(df[FEATURE_COLS], df["crop"])
-
-    crop_model = get_trained_crop_model()
-    predict_crop = lambda n, p, k, t, h, ph, r: crop_model.predict(pd.DataFrame([[n, p, k, t, h, ph, r]], columns=FEATURE_COLS))[0]
-
-    # --- Plant.id Disease Detection API Helper ---
-    def check_plant_disease_api(image_bytes, api_key):
-        img_b64 = base64.b64encode(image_bytes).decode('utf-8')
-        url = "https://plant.id/api/v3/health_assessment"
-        payload = {"images": [f"data:image/jpeg;base64,{img_b64}"], "similar_images": True}
-        return requests.post(url, json=payload, headers={"Api-Key": api_key, "Content-Type": "application/json"}, timeout=15)
-
-    # --- Live Weather API Helper ---
-    @st.cache_data(ttl=600, show_spinner=False)
-    def fetch_weather(city: str):
-        try:
-            g = requests.get("https://geocoding-api.open-meteo.com/v1/search", params={"name": city, "count": 1}, timeout=5).json()
-            loc = g["results"][0]
-            w = requests.get("https://api.open-meteo.com/v1/forecast", params={"latitude": loc["latitude"], "longitude": loc["longitude"], "current": "temperature_2m,relative_humidity_2m,precipitation"}, timeout=5).json()
-            return {"name": loc.get("name", city), "temp": w["current"]["temperature_2m"], "hum": w["current"]["relative_humidity_2m"], "rain": w["current"]["precipitation"]}
-        except Exception:
-            return None
-
-    # --- Main Navigation Tabs ---
-    t1, t2, t3, t4 = st.tabs(["🎛️ Manual Sliders", "🌤️ Weather Search", "📊 Soil Test Report", "🍃 Disease Detection (Plant.id API)"])
-
-    # --- Tab 1: Manual Parameter Testing (Sliders) ---
+    # Tab 1: Manual Input Sliders
     with t1:
         c1, c2 = st.columns(2)
-        with c1:
-            n, p, k = st.slider("Nitrogen (N)", 0, 140, 75), st.slider("Phosphorus (P)", 0, 145, 45), st.slider("Potassium (K)", 0, 205, 40)
-            ph = st.slider("Soil pH Level", 0.0, 14.0, 6.5)
-        with c2:
-            temp, hum, rain = st.slider("Temp (°C)", 10.0, 50.0, 23.0), st.slider("Humidity (%)", 10.0, 100.0, 75.0), st.slider("Rainfall (mm)", 20.0, 300.0, 180.0)
+        n, p, k = c1.slider("N", 0, 140, 75), c1.slider("P", 0, 145, 45), c1.slider("K", 0, 205, 40)
+        ph = c1.slider("pH", 0.0, 14.0, 6.5)
+        temp, hum, rain = c2.slider("Temp (°C)", 10.0, 50.0, 23.0), c2.slider("Humidity (%)", 10.0, 100.0, 75.0), c2.slider("Rainfall (mm)", 20.0, 300.0, 180.0)
+        
         if st.button("Predict Crop", key="b1"):
-            st.success(f"**Recommended Crop:** {predict_crop(n, p, k, temp, hum, ph, rain)}")
+            res = predict_crop(n, p, k, temp, hum, ph, rain)
+            st.success(f"🌾 **Recommended Crop:** {res}")
+            show_crop_details(res)
 
-    # --- Tab 2: Live Weather Based Recommendation ---
+    # Tab 2: Live Weather & Seasonal Prediction
     with t2:
-        city = st.text_input("Enter City / District:", "Ranchi")
+        now = datetime.datetime.now()
+        season, suitable = ("Kharif (Monsoon)", ["Rice", "Cotton", "Sugarcane", "Maize", "Papaya"]) if 6 <= now.month <= 10 else \
+                           ("Rabi (Winter)", ["Wheat", "Chickpea", "Apple"]) if now.month >= 11 or now.month <= 4 else \
+                           ("Zaid (Summer)", ["Coffee", "Banana", "Papaya"])
+        
+        st.info(f"📅 **Date:** {now.strftime('%d %B %Y')} | **Season:** {season}")
+        city = st.text_input("City / District:", "Ranchi")
         c1, c2 = st.columns(2)
-        with c1:
-            avg_rain = st.slider("Average Seasonal Rainfall (mm):", 30, 300, 150)
-        with c2:
-            soil_type = st.selectbox("Soil Profile Preset:", ["Standard Soil (Balanced)", "High Nitrogen Soil", "P/K Rich Soil"])
+        avg_rain, soil = c1.slider("Avg Rainfall (mm):", 30, 300, 150), c2.selectbox("Soil Preset:", ["Balanced", "High Nitrogen", "P/K Rich"])
 
-        if st.button("Fetch Weather & Predict", key="b2"):
+        if st.button("Fetch & Predict", key="b2"):
             w = fetch_weather(city.strip())
             if w:
-                st.info(f"📍 Location: {w['name']} | Temp: {w['temp']}°C | Humidity: {w['hum']}%")
-                
-                # Preset soil values balanced across multiple crops
-                if soil_type == "High Nitrogen Soil":
-                    sn, sp, sk = 100, 45, 35
-                elif soil_type == "P/K Rich Soil":
-                    sn, sp, sk = 35, 75, 75
-                else:
-                    sn, sp, sk = 70, 45, 40
+                st.write(f"📍 **Location:** {w['name']} | **Temp:** {w['temp']}°C | **Humidity:** {w['hum']}%")
+                sn, sp, sk = (100, 45, 35) if soil == "High Nitrogen" else (35, 75, 75) if soil == "P/K Rich" else (70, 45, 40)
+                res = predict_crop(sn, sp, sk, w['temp'], w['hum'], 6.5, avg_rain)
+                st.success(f"🌟 **Recommended Crop:** {res}")
+                show_crop_details(res)
 
-                res_crop = predict_crop(sn, sp, sk, w['temp'], w['hum'], 6.5, avg_rain)
-                st.success(f"**Recommended Crop for {w['name']}:** {res_crop}")
-            else:
-                st.error("Could not fetch weather data.")
-
-    # --- Tab 3: Soil Test CSV Upload & Analysis ---
+    # Tab 3: Soil Test CSV Processing
     with t3:
         up_file = st.file_uploader("Upload Soil CSV", type=["csv"])
         if up_file:
-            try:
-                df = pd.read_csv(up_file)
-                df["Recommended_Crop"] = [predict_crop(r.get("N", 75), r.get("P", 45), r.get("K", 40), r.get("temperature", 23.0), r.get("humidity", 75.0), r.get("ph", 6.5), r.get("rainfall", 180.0)) for _, r in df.iterrows()]
-                st.dataframe(df, use_container_width=True)
-                st.download_button("Download CSV", data=df.to_csv(index=False).encode("utf-8"), file_name="crop_analysis.csv")
-            except Exception:
-                st.error("Error reading CSV file.")
+            df = pd.read_csv(up_file)
+            df["Recommended_Crop"] = [predict_crop(r.get("N", 75), r.get("P", 45), r.get("K", 40), r.get("temperature", 23.0), r.get("humidity", 75.0), r.get("ph", 6.5), r.get("rainfall", 180.0)) for _, r in df.iterrows()]
+            st.dataframe(df, use_container_width=True)
         else:
-            sn, sp, sk = st.number_input("N", value=75), st.number_input("P", value=45), st.number_input("K", value=40)
+            sn, sp, sk = st.number_input("N", 75), st.number_input("P", 45), st.number_input("K", 40)
             if st.button("Evaluate Sample", key="b3"):
-                st.success(f"**Recommended Crop:** {predict_crop(sn, sp, sk, 23.0, 75.0, 6.5, 180.0)}")
+                res = predict_crop(sn, sp, sk, 23.0, 75.0, 6.5, 180.0)
+                st.success(f"🌾 **Recommended Crop:** {res}")
+                show_crop_details(res)
 
-    # --- Tab 4: Leaf Disease Detection (Plant.id API) ---
+    # Tab 4: Plant.id Leaf Disease Assessment
     with t4:
-        st.subheader("🍃 Plant Health Diagnostic (Plant.id API)")
-        
-        # Embedded User API Key
-        PLANT_ID_API_KEY = "EI9DKae6Sgbd28Rqx2AnaIV6XmOZZxIZZo01mYljV9tXUSRLdZ"
-        api_key = st.text_input("Plant.id API Key:", value=PLANT_ID_API_KEY, type="password")
-
+        st.subheader("🍃 Leaf Disease Detection")
+        api_key = st.text_input("Plant.id API Key:", type="password", help="Enter your Plant.id API key here")
         img_file = st.file_uploader("Upload Leaf Image", type=["jpg", "jpeg", "png"])
+        
         if img_file:
-            st.image(Image.open(img_file), caption="Uploaded Specimen", width=300)
-            if st.button("Run Diagnostic", key="b4"):
-                if api_key.strip():
-                    with st.spinner("Analyzing with Plant.id API..."):
-                        res = check_plant_disease_api(img_file.getvalue(), api_key.strip())
-                        if res.status_code in (200, 201):
-                            data = res.json().get("result", {})
-                            if data.get("is_healthy", {}).get("binary", True):
-                                st.info("🟢 **Plant Status:** Healthy / Normal Leaf")
-                            else:
-                                diseases = data.get("disease", {}).get("suggestions", [])
-                                if diseases:
-                                    d = diseases[0]
-                                    st.error(f"🔴 **Detected Disease:** `{d.get('name')}` ({d.get('probability',0)*100:.1f}% Confidence)")
-                                    for k_t, v_t in d.get("details", {}).get("treatment", {}).items():
-                                        st.write(f"**{k_t.title()}:** {v_t}")
-                                else:
-                                    st.warning("Disease detected but unclassified.")
+            st.image(img_file, caption="Uploaded Leaf Image", width=250)
+            
+        if st.button("Run Diagnostic", key="b4"):
+            if not api_key.strip():
+                st.warning("⚠️ Please enter a valid Plant.id API Key above.")
+            elif not img_file:
+                st.warning("⚠️ Please upload a leaf image first.")
+            else:
+                with st.spinner("Analyzing leaf image via Plant.id API..."):
+                    res = check_plant_disease_api(img_file.getvalue(), api_key.strip())
+                    if res and res.status_code in (200, 201):
+                        data = res.json().get("result", {})
+                        diseases = data.get("disease", {}).get("suggestions", [])
+                        if diseases:
+                            st.success("Diagnostic Assessment Complete:")
+                            for i, d in enumerate(diseases[:3]):
+                                st.write(f"**{i+1}. {d.get('name')}** — `{d.get('probability', 0)*100:.1f}% Confidence`")
                         else:
-                            st.error(f"API Request Failed (Status Code: {res.status_code}). Please verify your Plant.id API key/credits.")
-                else:
-                    st.warning("⚠️ Enter a valid Plant.id API Key above.")
-                
+                            st.info("No disease detected with high confidence.")
+                    else:
+                        st.error("API Connection Failed or Invalid API Key. Please check your credentials.")
+                 
