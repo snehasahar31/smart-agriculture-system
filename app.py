@@ -78,7 +78,7 @@ else:
             }
             rows = []
             for crop, b in crops.items():
-                for _ in range(20):
+                for _ in range(30):
                     rows.append([
                         np.random.randint(b[0], b[1]), np.random.randint(b[2], b[3]), np.random.randint(b[4], b[5]),
                         round(np.random.uniform(b[6], b[7]), 1), round(np.random.uniform(b[8], b[9]), 1),
@@ -127,11 +127,27 @@ else:
     # --- Tab 2: Live Weather Based Recommendation ---
     with t2:
         city = st.text_input("Enter City / District:", "Patna")
+        c1, c2 = st.columns(2)
+        with c1:
+            avg_rain = st.slider("Average Seasonal Rainfall (mm):", 30, 300, 100)
+        with c2:
+            soil_type = st.selectbox("Soil Profile Preset:", ["Standard Soil (Balanced)", "High Nitrogen Soil", "P/K Rich Soil"])
+
         if st.button("Fetch Weather & Predict", key="b2"):
             w = fetch_weather(city.strip())
             if w:
-                st.info(f"📍 Location: {w['name']} | Temp: {w['temp']}°C | Humidity: {w['hum']}% | Rain: {w['rain']} mm")
-                st.success(f"**Recommended Crop:** {predict_crop(85, 45, 40, w['temp'], w['hum'], 6.5, w['rain'])}")
+                st.info(f"📍 Location: {w['name']} | Temp: {w['temp']}°C | Humidity: {w['hum']}%")
+                
+                # Preset soil values based on selection
+                if soil_type == "High Nitrogen Soil":
+                    sn, sp, sk = 110, 45, 30
+                elif soil_type == "P/K Rich Soil":
+                    sn, sp, sk = 30, 80, 80
+                else:
+                    sn, sp, sk = 65, 45, 45
+
+                res_crop = predict_crop(sn, sp, sk, w['temp'], w['hum'], 6.5, avg_rain)
+                st.success(f"**Recommended Crop for {w['name']}:** {res_crop}")
             else:
                 st.error("Could not fetch weather data.")
 
@@ -155,6 +171,7 @@ else:
     with t4:
         st.subheader("🍃 Plant Health Diagnostic (Plant.id API)")
         
+        # Embedded User API Key
         PLANT_ID_API_KEY = "EI9DKae6Sgbd28Rqx2AnaIV6XmOZZxIZZo01mYljV9tXUSRLdZ"
         api_key = st.text_input("Plant.id API Key:", value=PLANT_ID_API_KEY, type="password")
 
@@ -162,7 +179,7 @@ else:
         if img_file:
             st.image(Image.open(img_file), caption="Uploaded Specimen", width=300)
             if st.button("Run Diagnostic", key="b4"):
-                if api_key.strip() and api_key != "EI9DKae6Sgbd28Rqx2AnaIV6XmOZZxIZZo01mYljV9tXUSRLdZ":
+                if api_key.strip():
                     with st.spinner("Analyzing with Plant.id API..."):
                         res = check_plant_disease_api(img_file.getvalue(), api_key.strip())
                         if res.status_code in (200, 201):
@@ -179,7 +196,7 @@ else:
                                 else:
                                     st.warning("Disease detected but unclassified.")
                         else:
-                            st.error(f"API Request Failed (Status Code: {res.status_code}). Check API Key.")
+                            st.error(f"API Request Failed (Status Code: {res.status_code}). Please verify your Plant.id API key/credits.")
                 else:
-                    st.warning("⚠️ Enter a valid Plant.id API Key above or paste it in code.")
-                    
+                    st.warning("⚠️ Enter a valid Plant.id API Key above.")
+        
