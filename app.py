@@ -62,23 +62,24 @@ else:
 
     @st.cache_resource
     def get_trained_crop_model():
-        file_path = "Crop_recommendation.csv"
+        file_path = "Crop_recommendation_v2.csv"
         if not os.path.exists(file_path):
+            # Overlapping NPK ranges so Temperature, Humidity & Rainfall decide the crop
             crops = {
-                "Rice": (80,100, 35,60, 35,45, 20,27, 80,90, 5.5,7.2, 180,300),
-                "Maize": (60,100, 35,60, 15,25, 18,27, 55,70, 5.5,7.0, 60,110),
-                "Chickpea": (20,50, 55,80, 70,85, 17,20, 14,20, 5.5,6.5, 65,95),
-                "Cotton": (100,140, 35,60, 15,25, 22,26, 60,80, 5.8,8.0, 60,110),
-                "Coffee": (80,120, 15,35, 25,35, 23,27, 50,80, 6.0,7.0, 115,200),
-                "Wheat": (40,70, 40,60, 40,60, 15,25, 50,70, 6.0,7.5, 70,130),
-                "Sugarcane": (90,120, 30,50, 25,40, 26,32, 55,70, 6.0,7.5, 80,110),
-                "Banana": (90,120, 70,95, 45,55, 25,30, 75,85, 5.5,6.5, 90,120),
-                "Apple": (10,40, 120,145, 195,205, 21,24, 90,95, 5.5,6.5, 100,125),
-                "Papaya": (35,60, 45,70, 45,55, 23,35, 80,95, 6.5,7.0, 80,200)
+                "Rice": (60,100, 35,60, 30,50, 20,35, 70,95, 5.5,7.2, 150,300),
+                "Maize": (50,90, 35,60, 20,50, 18,32, 50,75, 5.5,7.0, 60,130),
+                "Chickpea": (20,50, 50,80, 60,85, 12,22, 14,35, 5.5,6.5, 40,90),
+                "Cotton": (60,110, 35,60, 20,50, 22,35, 50,80, 5.8,8.0, 60,120),
+                "Coffee": (70,110, 15,35, 25,45, 20,28, 50,80, 6.0,7.0, 115,200),
+                "Wheat": (50,90, 35,60, 30,50, 10,24, 40,70, 6.0,7.5, 50,120),
+                "Sugarcane": (60,110, 30,60, 25,50, 24,38, 50,85, 6.0,7.5, 80,180),
+                "Banana": (80,120, 60,95, 40,65, 22,33, 70,90, 5.5,6.5, 90,160),
+                "Apple": (10,40, 100,145, 150,205, 12,24, 80,95, 5.5,6.5, 90,130),
+                "Papaya": (35,70, 40,70, 40,60, 22,35, 70,95, 6.5,7.0, 80,200)
             }
             rows = []
             for crop, b in crops.items():
-                for _ in range(30):
+                for _ in range(50):
                     rows.append([
                         np.random.randint(b[0], b[1]), np.random.randint(b[2], b[3]), np.random.randint(b[4], b[5]),
                         round(np.random.uniform(b[6], b[7]), 1), round(np.random.uniform(b[8], b[9]), 1),
@@ -117,7 +118,7 @@ else:
     with t1:
         c1, c2 = st.columns(2)
         with c1:
-            n, p, k = st.slider("Nitrogen (N)", 0, 140, 85), st.slider("Phosphorus (P)", 0, 145, 45), st.slider("Potassium (K)", 0, 205, 40)
+            n, p, k = st.slider("Nitrogen (N)", 0, 140, 75), st.slider("Phosphorus (P)", 0, 145, 45), st.slider("Potassium (K)", 0, 205, 40)
             ph = st.slider("Soil pH Level", 0.0, 14.0, 6.5)
         with c2:
             temp, hum, rain = st.slider("Temp (°C)", 10.0, 50.0, 23.0), st.slider("Humidity (%)", 10.0, 100.0, 75.0), st.slider("Rainfall (mm)", 20.0, 300.0, 180.0)
@@ -126,10 +127,10 @@ else:
 
     # --- Tab 2: Live Weather Based Recommendation ---
     with t2:
-        city = st.text_input("Enter City / District:", "Patna")
+        city = st.text_input("Enter City / District:", "Ranchi")
         c1, c2 = st.columns(2)
         with c1:
-            avg_rain = st.slider("Average Seasonal Rainfall (mm):", 30, 300, 100)
+            avg_rain = st.slider("Average Seasonal Rainfall (mm):", 30, 300, 150)
         with c2:
             soil_type = st.selectbox("Soil Profile Preset:", ["Standard Soil (Balanced)", "High Nitrogen Soil", "P/K Rich Soil"])
 
@@ -138,13 +139,13 @@ else:
             if w:
                 st.info(f"📍 Location: {w['name']} | Temp: {w['temp']}°C | Humidity: {w['hum']}%")
                 
-                # Preset soil values based on selection
+                # Preset soil values balanced across multiple crops
                 if soil_type == "High Nitrogen Soil":
-                    sn, sp, sk = 110, 45, 30
+                    sn, sp, sk = 100, 45, 35
                 elif soil_type == "P/K Rich Soil":
-                    sn, sp, sk = 30, 80, 80
+                    sn, sp, sk = 35, 75, 75
                 else:
-                    sn, sp, sk = 65, 45, 45
+                    sn, sp, sk = 70, 45, 40
 
                 res_crop = predict_crop(sn, sp, sk, w['temp'], w['hum'], 6.5, avg_rain)
                 st.success(f"**Recommended Crop for {w['name']}:** {res_crop}")
@@ -157,13 +158,13 @@ else:
         if up_file:
             try:
                 df = pd.read_csv(up_file)
-                df["Recommended_Crop"] = [predict_crop(r.get("N", 90), r.get("P", 42), r.get("K", 43), r.get("temperature", 23.0), r.get("humidity", 75.0), r.get("ph", 6.5), r.get("rainfall", 180.0)) for _, r in df.iterrows()]
+                df["Recommended_Crop"] = [predict_crop(r.get("N", 75), r.get("P", 45), r.get("K", 40), r.get("temperature", 23.0), r.get("humidity", 75.0), r.get("ph", 6.5), r.get("rainfall", 180.0)) for _, r in df.iterrows()]
                 st.dataframe(df, use_container_width=True)
                 st.download_button("Download CSV", data=df.to_csv(index=False).encode("utf-8"), file_name="crop_analysis.csv")
             except Exception:
                 st.error("Error reading CSV file.")
         else:
-            sn, sp, sk = st.number_input("N", value=90), st.number_input("P", value=42), st.number_input("K", value=43)
+            sn, sp, sk = st.number_input("N", value=75), st.number_input("P", value=45), st.number_input("K", value=40)
             if st.button("Evaluate Sample", key="b3"):
                 st.success(f"**Recommended Crop:** {predict_crop(sn, sp, sk, 23.0, 75.0, 6.5, 180.0)}")
 
@@ -199,4 +200,4 @@ else:
                             st.error(f"API Request Failed (Status Code: {res.status_code}). Please verify your Plant.id API key/credits.")
                 else:
                     st.warning("⚠️ Enter a valid Plant.id API Key above.")
-        
+                
